@@ -79,7 +79,7 @@ namespace WeatherApp.Controllers
             {
                 status = "healthy",
                 timestamp = DateTime.UtcNow,
-                service = "Weather API"
+                service = "Weather API."
             });
         }
     }
