@@ -43,5 +43,6 @@ jobs:
         tags: |
           ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
           ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:latest        
-          # ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:latest
-          # ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+ # ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:latest
+ # ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
