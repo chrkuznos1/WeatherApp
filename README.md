@@ -126,7 +126,7 @@ docker build -t weatherapp:latest .
 ```bash
 docker run -d \
   -p 5000:8080 \
-  -e OpenWeatherMap__ApiKey=YOUR_API_KEY_HERE \
+  -e OpenWeatherMap__ApiKey=REMOVED \
   --name weatherapp \
   weatherapp:latest
 ```
