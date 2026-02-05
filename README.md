@@ -117,18 +117,16 @@ GET /api/weather/health
 ### Build Docker Image
 
 ```bash
+
 docker build -t weatherapp:latest .
+
 ```
 
 ### Run Docker Container
 
 **Option 1: Using docker run**
 ```bash
-docker run -d \
-  -p 5000:8080 \
-  -e OpenWeatherMap__ApiKey=REMOVED \
-  --name weatherapp \
-  weatherapp:latest
+docker run -d -p 5000:8080 -e OpenWeatherMap__ApiKey=REMOVED -e ASPNETCORE_ENVIRONMENT='Development' --name weatherapp weatherapp:latest
 ```
 
 **Option 2: Using docker-compose**
@@ -263,3 +261,23 @@ For issues or questions:
 ---
 
 **Happy Coding! 🌤️**
+
+
+---
+
+When you’re ready to release a version:
+
+bash
+git checkout br1-docker
+git pull
+git tag v1.0.0
+git push origin v1.0.0
+GitHub Actions will automatically:
+
+Build the Docker image
+
+Tag it with v1.0.0
+
+Push it to Docker Hub
+
+No manual version editing, no secrets, no mistakes.
