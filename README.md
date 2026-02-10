@@ -128,6 +128,7 @@ docker build -t weatherapp:latest .
 ```bash
 docker run -d -p 5000:8080 -e OpenWeatherMap__ApiKey=a788f7f566f8188a0f751918b1d6b0fd -e ASPNETCORE_ENVIRONMENT='Development' --name weatherapp weatherapp:latest
 ```
+# WeatherAPIKEYa788f7f566f8188a0f751918b1d6b0fd
 
 **Option 2: Using docker-compose**
 ```bash
