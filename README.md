@@ -126,7 +126,7 @@ docker build -t weatherapp:latest .
 
 **Option 1: Using docker run**
 ```bash
-docker run -d -p 5000:8080 -e OpenWeatherMap__ApiKey=REMOVED -e ASPNETCORE_ENVIRONMENT='Development' --name weatherapp weatherapp:latest
+docker run -d -p 5000:8080 -e OpenWeatherMap__ApiKey=xxx -e ASPNETCORE_ENVIRONMENT='Development' --name weatherapp weatherapp:latest
 ```
 # WeatherAPIKEYREMOVED
 
