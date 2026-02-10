@@ -13,6 +13,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      KEYVAULT_URL: ${{ secrets.KEYVAULT_URL }}
+
     steps:
     - name: Checkout vcs repo
       uses: actions/checkout@v4
