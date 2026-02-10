@@ -33,17 +33,18 @@ namespace WeatherApp.Services
                 if (!response.IsSuccessStatusCode)
                 {
                     return null;
+                    //return new WeatherResponse { ErrorMessage = $@"The request failed with {response.StatusCode.ToString()} code." };
                 }
 
-                var content = await response.Content.ReadAsStringAsync();
-                var weatherData = JsonConvert.DeserializeObject<OpenWeatherMapResponse>(content);
+                string? content = await response.Content.ReadAsStringAsync();
+                OpenWeatherMapResponse? weatherData = JsonConvert.DeserializeObject<OpenWeatherMapResponse>(content);
 
                 if (weatherData == null)
                 {
                     return null;
                 }
 
-                return new WeatherResponse
+                var wp = new WeatherResponse
                 {
                     City = weatherData.name,
                     Country = weatherData.sys?.country,
@@ -55,6 +56,8 @@ namespace WeatherApp.Services
                     Icon = weatherData.weather?.FirstOrDefault()?.icon,
                     DateTime = DateTimeOffset.FromUnixTimeSeconds(weatherData.dt).DateTime
                 };
+                //DB SAVE
+                return wp;
             }
             catch (Exception ex)
             {
