@@ -16,21 +16,8 @@ builder.Services.AddScoped<IWeatherService, WeatherService>();
 builder.Services.AddHealthChecks();
 
 // Add Azure Key Vault-this is 2nd addition
-//var keyVaultUrl = new Uri($"https://chrkuznosweatherapp-kv.vault.azure.net/");
-
- /*  before with info from appsettings.json 
 var keyVaultUrl = new Uri(builder.Configuration["AzureKeyVault:Url"]);
 builder.Configuration.AddAzureKeyVault(keyVaultUrl, new DefaultAzureCredential());
-*/
-
-// Read Key Vault URL from environment variable
-var keyVaultUrl = Environment.GetEnvironmentVariable("KEYVAULT_URL"); 
-if (!string.IsNullOrEmpty(keyVaultUrl)) 
-{
- builder.Configuration.AddAzureKeyVault( new Uri(keyVaultUrl), new DefaultAzureCredential()
- ); 
- }
-
 
 
 // Add CORS
