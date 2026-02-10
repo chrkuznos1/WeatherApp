@@ -41,6 +41,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["Version"] = "1.0.5";
+    await next();
+});
+
 app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
