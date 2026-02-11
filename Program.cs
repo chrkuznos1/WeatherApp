@@ -44,6 +44,7 @@ if (app.Environment.IsDevelopment())
 app.Use(async (context, next) =>
 {
     context.Response.Headers["Version"] = "1.0.5";
+    context.Response.Headers["Update"] = "1.0.5.1";
     await next();
 });
 
