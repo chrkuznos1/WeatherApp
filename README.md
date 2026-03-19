@@ -1,3 +1,5 @@
+# this is a repo with github actions
+
 # Weather Application API
 
 A modern C# ASP.NET Core Web API for fetching weather information using OpenWeatherMap API.
