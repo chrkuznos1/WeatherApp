@@ -1,5 +1,5 @@
 # this is a repo with github actions
-
+# this is to add a tag
 # Weather Application API
 
 A modern C# ASP.NET Core Web API for fetching weather information using OpenWeatherMap API.
@@ -215,6 +215,25 @@ Visual Studio 2022 supports hot reload - make changes while debugging and see th
 - In Docker: `docker logs weatherapp`
 
 ## Troubleshooting
+
+### API Key Issues
+- Ensure your API key is valid and active
+
+## Git Pre-commit Check (Local Hook)
+To run checks before every commit, use the repository hook path:
+
+```bash
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit
+```
+
+Then commit as usual; the hook will run:
+- `dotnet format --verify-no-changes`
+- `dotnet test`
+
+If a check fails, fix the issues and commit again.
+
+> Note: This hook only runs locally. Add CI checks in GitHub Actions for enforced team-level checks.
 
 ### API Key Issues
 - Ensure your API key is valid and active

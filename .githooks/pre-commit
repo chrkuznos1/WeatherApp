@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit hook: run formatting checks and unit tests before commit
+# 1) run dotnet format verification
+# 2) run unit tests
+
+echo "[pre-commit] Running dotnet format verification..."
+dotnet format --verify-no-changes
+
+echo "[pre-commit] Running unit tests..."
+dotnet test
+
+echo "[pre-commit] All checks passed."
