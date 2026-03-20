@@ -22,7 +22,7 @@ jobs:
         run: dotnet restore
 
       - name: Verify formatting
-        run: dotnet format --verify-no-changes
+        run: dotnet format WeatherApp.sln --verify-no-changes
 
       - name: Run tests
-        run: dotnet test --no-restore
+        run: dotnet test WeatherApp.sln --no-restore
