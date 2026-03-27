@@ -1,0 +1,67 @@
+Triggered only on tags (e.g., v1.0.0).
+This is your release pipeline.
+
+name: CD - Sign and Push Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push to Docker Hub
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3
+
+    - name: Sign Docker Hub image (OIDC)
+      run: |
+        cosign sign \
+          --yes \
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+    - name: Log in to ACR
+      uses: azure/docker-login@v2
+      with:
+        login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+        use-azure-cli: false
+
+    - name: Push image to ACR
+      run: |
+        docker tag ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} \
+          ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
+
+        docker push ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
+
+    - name: Sign ACR image
+      run: |
+        cosign sign \
+          --yes \
+          ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
