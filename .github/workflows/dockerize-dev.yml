@@ -62,7 +62,7 @@ jobs:
     - name: Vulnerability Scan (Grype)  #like Trivy, Grype scans SBOM
       uses: anchore/scan-action@v3
       with:
-        image: weatherapp:ci
+        image: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
         fail-build: false
 
 
