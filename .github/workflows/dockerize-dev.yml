@@ -100,6 +100,10 @@ jobs:
           | cut -d'@' -f2)
         echo "value=$DIGEST" >> $GITHUB_OUTPUT
 
+    - name: Debug digest to check if worked
+      run: echo "Digest is ${{ steps.digest.outputs.value }}"
+    # Should print: Digest is sha256:abc123...        
+
 #9. Cosign the docker image (keyless signing) 
     - name: Install Cosign
       uses: sigstore/cosign-installer@v3.5.0
