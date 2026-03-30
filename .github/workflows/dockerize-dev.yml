@@ -112,7 +112,7 @@ jobs:
       run: |
         cosign sign \
           --yes \
-          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp@${{ steps.push.outputs.digest }} 
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp@${{ steps.digest.outputs.value }} 
 #${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} auto dinei sto tag eno to apapano sto
  #sha tag einai to version kai to apapano einai to digest pou einai to unique identifier tou image meta to push.
 #To digest einai auto pou xreiazetai gia na ginei to signing giati to signature prepei na syndethei me ena unique identifier tou image.
