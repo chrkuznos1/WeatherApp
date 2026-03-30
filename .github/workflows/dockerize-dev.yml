@@ -17,6 +17,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # required for keyless signing in cosign
 
     steps:
 # 1. Checkout code    
@@ -87,6 +90,22 @@ jobs:
       if: success()
       run: |
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+#8. Cosign the docker image (keyless signing)
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.5.0
+
+    - name: Sign Docker image with Cosign (keyless)
+      run: |
+        cosign sign \
+          --yes \
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp@${{ steps.push.outputs.digest }} 
+#${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} auto dinei sto tag eno to apapano sto
+ #sha tag einai to version kai to apapano einai to digest pou einai to unique identifier tou image meta to push.
+#To digest einai auto pou xreiazetai gia na ginei to signing giati to signature prepei na syndethei me ena unique identifier tou image.
+
+
+
 
 #
 # Next do the same for ACR (Azure Container Registry) if you want to push there as well
