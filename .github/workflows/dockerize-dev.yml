@@ -20,6 +20,7 @@ jobs:
     permissions:
       contents: read
       id-token: write  # required for keyless signing in cosign
+      packages: write
 
     env:
           IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
@@ -120,7 +121,6 @@ jobs:
  #sha tag einai to version kai to apapano einai to digest pou einai to unique identifier tou image meta to push.
 #To digest einai auto pou xreiazetai gia na ginei to signing giati to signature prepei na syndethei me ena unique identifier tou image.
 
-
 # 10. Create SBOM attestation with Cosign
     - name: Cosign SBOM attestation
       if: success()
@@ -135,6 +135,8 @@ jobs:
     - name: Verify Cosign signature
       run: |
         cosign verify \
+        --certificate-identity "https://github.com/chrkuznos1/WeatherApp/.github/workflows/dockerize-dev.yml@refs/heads/main" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
           ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
 
 # 12. Verify SBOM attestation
