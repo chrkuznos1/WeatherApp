@@ -4,6 +4,7 @@ on:
   push:
     branches: 
      - br1-docker
+  pull_request:   
 
 # on:
 #   push:
@@ -18,9 +19,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+# 1. Checkout code    
     - name: Checkout vcs repo
       uses: actions/checkout@v4
 
+#2. Log in to Docker Hub
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
@@ -30,15 +33,23 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build and push Docker image to docker hub
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: |
-          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+#Paizei alla Ayto ta kanei k ta 2 mazi den to 8elo giati prepei na kano sbom prota
+#    - name: Build and push Docker image to docker hub
+#      uses: docker/build-push-action@v5
+#      with:
+#        context: .
+#        file: ./Dockerfile
+#        push: true
+#        tags: |
+#          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
 
+#3. Build Docker image
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} -f ./Dockerfile .
+
+#4. Generate SBOM (Syft via Anchore sbom-action)
     # -------------------------------
     # 🔐 SBOM GENERATION (ADDED HERE)
     # -------------------------------
@@ -52,6 +63,7 @@ jobs:
     - name: Show SBOM
       run: cat sbom.json
 
+#5. Upload SBOM artifact (for audit/compliance)
     - name: Upload SBOM artifact
       uses: actions/upload-artifact@v4
       with:
@@ -59,15 +71,31 @@ jobs:
         path: sbom.json
     # -------------------------------
 
-    - name: Vulnerability Scan (Grype)  #like Trivy, Grype scans SBOM
-      uses: anchore/scan-action@v3
+
+
+#6. Scan SBOM with Grype (fail on critical vulns)
+
+    - name: Scan SBOM for vulnerabilities
+      uses: anchore/grype-action@v0.6.0 # (this scans the sbom)
       with:
-        image: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
-        fail-build: false
+        sbom: sbom.json
+        fail-on: critical
 
+    # - name: Vulnerability Scan (Grype)  #like Trivy, Grype scans SBOM
+    #   uses: anchore/scan-action@v3 # this scan the image
+    #   with:
+    #     image: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+    #     fail-build: false
+
+ #7. Push image to Docker Hub (only if scan passes)
+    # ---------------------------------------------------------
+    - name: Push Docker image
+      if: success()
+      run: |
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
 
 #
-#
+# Next do the same for ACR (Azure Container Registry) if you want to push there as well
     - name: Log in to Azure Container Registry
       uses: docker/login-action@v3
       with:
