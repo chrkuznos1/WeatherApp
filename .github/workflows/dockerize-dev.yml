@@ -73,19 +73,13 @@ jobs:
 
 
 
-#6. Scan SBOM with Grype (fail on critical vulns)
-
-    - name: Scan SBOM for vulnerabilities
-      uses: anchore/grype-action@v0.6.0 # (this scans the sbom)
+#6. Scan SBOM with Grype (fail on critical vulns) #like Trivy, Grype scans SBOM it can scan image too
+    - name: Scan SBOM for vulnerabilities 
+      uses: anchore/scan-action@v7 # (the grype-action@v0.6.0 scans the sbom)
       with:
         sbom: sbom.json
-        fail-on: critical
-
-    # - name: Vulnerability Scan (Grype)  #like Trivy, Grype scans SBOM
-    #   uses: anchore/scan-action@v3 # this scan the image
-    #   with:
-    #     image: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
-    #     fail-build: false
+        fail-build: true
+        severity-cutoff: critical
 
  #7. Push image to Docker Hub (only if scan passes)
     # ---------------------------------------------------------
