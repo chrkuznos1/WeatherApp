@@ -135,7 +135,7 @@ jobs:
     - name: Verify Cosign signature
       run: |
         cosign verify \
-        --certificate-identity "https://github.com/chrkuznos1/WeatherApp/.github/workflows/dockerize-dev.yml@refs/heads/main" \
+        --certificate-identity "https://github.com/chrkuznos1/WeatherApp/.github/workflows/dockerize-dev.yml@${{ github.ref }}" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
           ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
 
