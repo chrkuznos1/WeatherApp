@@ -144,6 +144,8 @@ jobs:
       if: success()
       run: |
         cosign verify-attestation \
+        --certificate-identity "https://github.com/chrkuznos1/WeatherApp/.github/workflows/dockerize-dev.yml@${{ github.ref }}" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \        
           --type cyclonedx \
           ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
 
