@@ -128,7 +128,7 @@ docker build -t weatherapp:latest .
 ```bash
 docker run -d -p 5000:8080 -e OpenWeatherMap__ApiKey=xxx -e ASPNETCORE_ENVIRONMENT='Development' --name weatherapp weatherapp:latest
 ```
-# WeatherAPIKEYREMOVED
+# WeatherAPIKEYREMOVED   //in this place was the apikey and when i rewrite history replaced with word REMOVED
 
 **Option 2: Using docker-compose**
 ```bash
