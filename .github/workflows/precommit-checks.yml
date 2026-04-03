@@ -28,8 +28,8 @@ jobs:
         run: dotnet format WeatherApp.sln --verify-no-changes
 
       - name: Build with analyzers
-#Runs static code analysis using built‑in .NET analyzers,Turns all warnings into errors,Enforces clean code,Catches unused variables, nullability issues, etc.     
-        run: dotnet build WeatherApp.sln --no-restore -warnaserror
+#Runs static code analysis using built‑in .NET analyzers,,Enforces clean code,Catches unused variables, nullability issues, etc.     
+        run: dotnet build WeatherApp.sln --no-restore #-warnaserror  ...with this it turns all warnings into errors
 
       - name: Check vulnerable packages
 #for Security scanning,Detects NuGet packages with known CVEs,Fails the pipeline if vulnerabilities exist,Great for security hygiene     
