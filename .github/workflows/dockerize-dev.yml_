@@ -26,9 +26,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write  # required for keyless signing in cosign
-      packages: write
+      contents: read #allows the workflow to read the repository contents.
+#enables Cloning the repo, Reading files,Checking out code 
+      id-token: write  # request an OIDC token from GitHub
+#enables Keyless signing with Cosign,Federated authentication to cloud providers (Azure, AWS, GCP),Secure deployments without storing secrets
+#Cosign uses OIDC to sign your Docker images without storing private keys
+      packages: write #allows the workflow to push packages to GitHub Packages or GHCR (GitHub Container Registry)
+#Your workflow builds and pushes a Docker image to GHCR.Without packages: write, the push would fail.      
+      security-events: write #allows the workflow to upload security scan results to GitHub Security features
+#Uploading SARIF reports,Integrating with CodeQL,Reporting vulnerabilities in the Security tab      
+#needed because your pipeline includes trivy and SAST
 
     env:
           IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
