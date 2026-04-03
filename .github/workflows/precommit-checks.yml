@@ -1,9 +1,12 @@
 name: precommit-checks
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches:
-      - main
+      - master
       - '**/*'
   pull_request:
 
@@ -14,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
@@ -24,5 +27,25 @@ jobs:
       - name: Verify formatting
         run: dotnet format WeatherApp.sln --verify-no-changes
 
+      - name: Build with analyzers
+#Runs static code analysis using built‑in .NET analyzers,Turns all warnings into errors,Enforces clean code,Catches unused variables, nullability issues, etc.     
+        run: dotnet build WeatherApp.sln --no-restore -warnaserror
+
+      - name: Check vulnerable packages
+#for Security scanning,Detects NuGet packages with known CVEs,Fails the pipeline if vulnerabilities exist,Great for security hygiene     
+        run: dotnet list WeatherApp.sln package --vulnerable
+
       - name: Run tests
         run: dotnet test WeatherApp.sln --no-restore
+
+
+# Here are optional but powerful additions:
+# StyleCop
+# Strict code style enforcement.
+
+# SonarCloud
+# Enterprise‑grade static analysis.
+
+# Trivy filesystem scan
+# Scan your source code for secrets and vulnerabilities.
+# If you want, I can integrate any of these into your workflow.        
