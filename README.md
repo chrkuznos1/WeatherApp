@@ -1,3 +1,5 @@
+# this is a repo with github actions
+# this is to add a tag
 # a new dev must do 
 #git config core.hooksPath .githooks
 
@@ -132,8 +134,7 @@ docker build -t weatherapp:latest .
 ```bash
 docker run -d -p 5000:8080 -e OpenWeatherMap__ApiKey=xxx -e ASPNETCORE_ENVIRONMENT='Development' --name weatherapp weatherapp:latest
 ```
-# WeatherAPIKEYREMOVED   //in this place was the apikey and when i rewrite history replaced with word REMOVED
-
+# WeatherAPIKEYREMOVED //in this place was the apikey and when i rewrite history replaced with word REMOVED
 **Option 2: Using docker-compose**
 ```bash
 # Set your API key as environment variable
@@ -217,6 +218,25 @@ Visual Studio 2022 supports hot reload - make changes while debugging and see th
 - In Docker: `docker logs weatherapp`
 
 ## Troubleshooting
+
+### API Key Issues
+- Ensure your API key is valid and active
+
+## Git Pre-commit Check (Local Hook)
+To run checks before every commit, use the repository hook path:
+
+```bash
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit
+```
+
+Then commit as usual; the hook will run:
+- `dotnet format --verify-no-changes`
+- `dotnet test`
+
+If a check fails, fix the issues and commit again.
+
+> Note: This hook only runs locally. Add CI checks in GitHub Actions for enforced team-level checks.
 
 ### API Key Issues
 - Ensure your API key is valid and active
