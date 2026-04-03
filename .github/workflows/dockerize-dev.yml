@@ -27,18 +27,18 @@ jobs:
 
     steps:
 # 1. Checkout code    
-    - name: Checkout vcs repo
+    - name: Checkout git repo
       uses: actions/checkout@v4
 
 #2. Log in to Docker Hub
     - name: Log in to Docker Hub
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
 
 #Paizei alla Ayto ta kanei k ta 2 mazi den to 8elo giati prepei na kano sbom prota
 #    - name: Build and push Docker image to docker hub
