@@ -51,6 +51,10 @@ jobs:
         context: .
         file: ./Dockerfile
         push: false  # DEN ANEVAZEI
+        load: true        # <-- THIS IS THE FIX 
+#could not determine source: errors occurred attempting to resolve 'weatherapp:ci':  
+#docker/build-push-action@v5 uses Buildx, 
+#and Buildx does not load the image into the local Docker engine unless you explicitly tell it to      
         tags: weatherapp:ci
 
     - name: Generate SBOM #Syft generates SBOM
