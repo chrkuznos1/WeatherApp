@@ -1,5 +1,13 @@
 name: Build and Push Docker Image
 
+#This forces all actions in the workflow to run using Node 24. This is important for compatibility
+#with the latest features and security updates in GitHub Actions. By setting this environment variable,
+#you ensure that your workflow benefits from the improvements in Node 24 while maintaining stability and
+# performance.
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: 
