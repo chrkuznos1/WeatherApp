@@ -1,5 +1,9 @@
 # this is a repo with github actions
 # this is to add a tag
+# a new dev must do 
+#git config core.hooksPath .githooks
+
+
 # Weather Application API
 
 A modern C# ASP.NET Core Web API for fetching weather information using OpenWeatherMap API.
