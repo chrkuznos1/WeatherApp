@@ -1,3 +1,7 @@
+# a new dev must do 
+#git config core.hooksPath .githooks
+
+
 # Weather Application API
 
 A modern C# ASP.NET Core Web API for fetching weather information using OpenWeatherMap API.
