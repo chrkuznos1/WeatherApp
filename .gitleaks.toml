@@ -1,0 +1,12 @@
+# Gitleaks configuration
+title = "WeatherApp Gitleaks Config"
+
+[extend]
+useDefault = true
+
+# Custom rule to catch 40-character hex tokens (common for API tokens/secrets)
+[[rules]]
+id = "generic-api-token"
+description = "Detects generic 40-character hex tokens commonly used as secrets"
+regex = '''(?:sonar|test|token|secret|key|auth)\s+([a-f0-9]{40})'''
+keywords = ["sonar", "token", "test"]
