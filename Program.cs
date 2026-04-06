@@ -16,7 +16,7 @@ builder.Services.AddScoped<IWeatherService, WeatherService>();
 builder.Services.AddHealthChecks();
 
 // Add Azure Key Vault-this is 2nd addition
-var keyVaultUrl = new Uri(builder.Configuration["AzureKeyVault:Url"]);
+var keyVaultUrl = new Uri(builder.Configuration["AzureKeyVault:Url"]?.ToString()!);
 builder.Configuration.AddAzureKeyVault(keyVaultUrl, new DefaultAzureCredential());
 
 
