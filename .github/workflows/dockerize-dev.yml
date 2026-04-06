@@ -26,6 +26,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
+<<<<<<< HEAD
       contents: read #allows the workflow to read the repository contents.
 #enables Cloning the repo, Reading files,Checking out code 
       id-token: write  # request an OIDC token from GitHub
@@ -36,6 +37,11 @@ jobs:
       security-events: write #allows the workflow to upload security scan results to GitHub Security features
 #Uploading SARIF reports,Integrating with CodeQL,Reporting vulnerabilities in the Security tab      
 #needed because your pipeline includes trivy and SAST
+=======
+      contents: read
+      id-token: write  # required for keyless signing in cosign
+      packages: write
+>>>>>>> be5e61d174b2c0e99782991f2e525d9b41221d39
 
     env:
           IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}

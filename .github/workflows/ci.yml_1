@@ -1,0 +1,88 @@
+This runs on every push/PR.
+It does not push images and does not deploy.
+
+name: CI - Build, Test, SBOM, Scan
+
+on:
+  push:
+    branches: [ main, br1-docker ]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image (local only)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: weatherapp:ci
+
+    - name: Generate SBOM #Syft generates SBOM
+      uses: anchore/syft-action@v0.14.0
+      with:
+        image: weatherapp:ci
+        output-file: sbom.json
+        format: cyclonedx-json
+
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom
+        path: sbom.json
+
+    - name: Vulnerability Scan (Grype)  #like Trivy, Grype scans SBOM
+      uses: anchore/scan-action@v3
+      with:
+        image: weatherapp:ci
+        fail-build: false
+
+######
+With fail-build: false:
+The scan runs
+
+Vulnerabilities are reported
+
+But the pipeline continues even if critical issues exist
+
+This is useful during early development or when you want visibility without blocking builds.
+
+
+If you set: true  
+Then any critical vulnerability will stop the pipeline.    
+######3
+
+###########and
+permissions:
+  security-events: write
+
+ It uploads the results to GitHub Security tab
+
+ The results appear under:
+
+GitHub → Security → Code scanning alerts
+
+This gives you:
+
+A dashboard of vulnerabilities
+
+Severity breakdown
+
+Fix recommendations
+
+Historical tracking
+
+############
