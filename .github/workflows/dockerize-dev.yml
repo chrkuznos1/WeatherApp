@@ -1,37 +1,215 @@
 name: Build and Push Docker Image
 
+#This forces all actions in the workflow to run using Node 24. This is important for compatibility
+#with the latest features and security updates in GitHub Actions. By setting this environment variable,
+#you ensure that your workflow benefits from the improvements in Node 24 while maintaining stability and
+# performance.
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: 
      - br1-docker
+  pull_request:   
 
 # on:
 #   push:
 #     tags: 
 #       - 'v*' # triggers on tags like v1.0.0, v2.1.3, etc.
 
+#build → test → docker build → **SBOM generation** → push image → deploy
+
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read #allows the workflow to read the repository contents.
+#enables Cloning the repo, Reading files,Checking out code 
+      id-token: write  # request an OIDC token from GitHub
+#enables Keyless signing with Cosign,Federated authentication to cloud providers (Azure, AWS, GCP),Secure deployments without storing secrets
+#Cosign uses OIDC to sign your Docker images without storing private keys
+      packages: write #allows the workflow to push packages to GitHub Packages or GHCR (GitHub Container Registry)
+#Your workflow builds and pushes a Docker image to GHCR.Without packages: write, the push would fail.      
+      security-events: write #allows the workflow to upload security scan results to GitHub Security features
+#Uploading SARIF reports,Integrating with CodeQL,Reporting vulnerabilities in the Security tab      
+#needed because your pipeline includes trivy and SAST
+
+    env:
+          IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
 
     steps:
-    - name: Checkout vcs repo
+# 1. Checkout code    
+    - name: Checkout git repo
       uses: actions/checkout@v4
 
+#2. Log in to Docker Hub
     - name: Log in to Docker Hub
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
+#Paizei alla Ayto ta kanei k ta 2 mazi den to 8elo giati prepei na kano sbom prota
+#    - name: Build and push Docker image to docker hub
+#      uses: docker/build-push-action@v5
+#      with:
+#        context: .
+#        file: ./Dockerfile
+#        push: true
+#        tags: |
+#          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+#3. Build Docker image
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} -f ./Dockerfile .
+
+#4. Generate SBOM (Syft via Anchore sbom-action)
+    # -------------------------------
+    # 🔐 SBOM GENERATION (ADDED HERE)
+    # -------------------------------
+    - name: Generate SBOM for Docker image
+      uses: anchore/sbom-action@v0.17.0 #anchore/syft-action@v0.14.0
       with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: |
+        image: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+        output-file: sbom.json
+        format: cyclonedx-json
+
+    - name: Show SBOM
+      run: cat sbom.json
+
+#5. Upload SBOM artifact (for audit/compliance)
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom
+        path: sbom.json
+    # -------------------------------
+
+
+
+#6. Scan SBOM with Grype (fail on critical vulns) #like Trivy, Grype scans SBOM it can scan image too
+    - name: Scan SBOM for vulnerabilities 
+      uses: anchore/scan-action@v7 # (the grype-action@v0.6.0 scans the sbom)
+      with:
+        sbom: sbom.json
+        fail-build: true
+        severity-cutoff: critical
+
+ #7. Push image to Docker Hub (only if scan passes)
+    # ---------------------------------------------------------
+    - name: Push Docker image
+      if: success()
+      run: |
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+#8. Get image digest after push is necessary for signing with cosign because I do build and push separately.
+    - name: Get image digest
+      id: digest
+      run: |
+        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} \
+          | cut -d'@' -f2)
+        echo "value=$DIGEST" >> $GITHUB_OUTPUT
+
+    - name: Debug digest to check if worked
+      run: echo "Digest is ${{ steps.digest.outputs.value }}"
+    # Should print: Digest is sha256:abc123...        
+
+#9. Cosign the docker image (keyless signing) 
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.5.0
+
+    - name: Sign Docker image with Cosign (keyless)
+      run: |
+        cosign sign \
+          --yes \
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp@${{ steps.digest.outputs.value }} 
+#${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} auto dinei sto tag eno to apapano sto
+ #sha tag einai to version kai to apapano einai to digest pou einai to unique identifier tou image meta to push.
+#To digest einai auto pou xreiazetai gia na ginei to signing giati to signature prepei na syndethei me ena unique identifier tou image.
+
+# 10. Create SBOM attestation with Cosign
+    - name: Cosign SBOM attestation
+      if: success()
+      run: |
+        cosign attest \
+          --yes \
+          --predicate sbom.json \
+          --type cyclonedx \
           ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+#11. Verify the Cosign signature (optional but recommended)
+    - name: Verify Cosign signature
+      run: |
+        cosign verify \
+        --certificate-identity "https://github.com/chrkuznos1/WeatherApp/.github/workflows/dockerize-dev.yml@${{ github.ref }}" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+# 12. Verify SBOM attestation
+    - name: Verify SBOM attestation
+      if: success()
+      run: |
+        cosign verify-attestation \
+        --certificate-identity "https://github.com/chrkuznos1/WeatherApp/.github/workflows/dockerize-dev.yml@${{ github.ref }}" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        --type cyclonedx \
+          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }}
+
+# This #12 step:
+# ✔ Signs your SBOM
+# ✔ Stores it in Docker Hub
+# ✔ Cryptographically binds it to your image
+# ✔ Enables secure, compliant deployments
+# It’s one of the most powerful parts of your pipeline.
+# Attestations are essential for:
+
+# ✔ Supply chain security (SLSA, NIST 800‑218, EU CRA)
+# You can prove:
+
+# Who built the image
+
+# What components it contains
+
+# That the SBOM wasn’t tampered with
+
+# ✔ Zero‑trust deployments
+# Your cluster can enforce:
+# “Only deploy images with valid signatures AND valid SBOM attestations.”
+
+# ✔ Audits & compliance
+# You can show:
+
+# The SBOM is tied to the exact image digest
+
+# It was generated by your CI, not manually edited
+
+# ✔ Future automation
+# Tools like:
+
+# Kyverno
+
+# Sigstore Policy Controller
+
+# Tekton Chains
+
+# Cilium Tetragon …can automatically verify attestations before allowing deployments.
+
+
+
+#
+# Next do the same for ACR (Azure Container Registry) if you want to push there as well
+    - name: Log in to Azure Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ secrets.ACR_LOGIN_SERVER }}
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}          
