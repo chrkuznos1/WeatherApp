@@ -11,7 +11,7 @@ SOLUTION_FILE="WeatherApp.sln"
 
 echo "[pre-commit] Scanning for secrets with gitleaks..."
 if command -v gitleaks &> /dev/null; then
-  gitleaks detect --source . --config .gitleaks.toml --verbose --exit-code 1
+  gitleaks detect --source . --config .gitleaks.toml --no-git --verbose --exit-code 1
 else
   echo "[pre-commit] WARNING: gitleaks not installed — skipping secret scan."
   echo "[pre-commit] Install it: https://github.com/gitleaks/gitleaks#installing"
