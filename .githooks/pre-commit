@@ -5,6 +5,7 @@ set -euo pipefail
 # 1) scan for secrets with gitleaks
 # 2) run dotnet format verification on solution
 # 3) run unit tests
+# a warning at least one of these checks fails will prevent the commit
 
 SOLUTION_FILE="WeatherApp.sln"
 
