@@ -46,6 +46,11 @@ jobs:
             -Dsonar.projectKey=chrkuznos1_WeatherApp
             -Dsonar.cs.opencover.reportsPaths=**/coverage.opencover.xml
 
+      - name: Publish pre-commit summary
+        if: success()
+        run: |
+          echo "🔎 Secret scan completed." >> $GITHUB_STEP_SUMMARY
+          echo "✅ Pre-commit step in CI is done." >> $GITHUB_STEP_SUMMARY
 
 
   # ci:
@@ -75,12 +80,12 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-#2. Log in to Docker Hub
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+# #2. Log in to Docker Hub
+#     - name: Log in to Docker Hub
+#       uses: docker/login-action@v4
+#       with:
+#         username: ${{ secrets.DOCKERHUB_USERNAME }}
+#         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
