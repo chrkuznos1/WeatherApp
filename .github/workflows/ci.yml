@@ -18,7 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # required by SonarCloud for full blame/history analysis      
+          fetch-depth: 0  # required by SonarCloud for full blame/history analysis
+      - name: Check for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}          
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -30,7 +34,7 @@ jobs:
 # --collect adds coverage report which SonarCloud will pick up      
 
       - name: SonarCloud scan
-        # Enterprise-grade static analysis f9871085d26c44e54cd0e38ae12325d4f9f392f1
+        # Enterprise-grade static analysis
         # Detects bugs, code smells, security hotspots, and tracks coverage
         uses: SonarSource/sonarcloud-github-action@master
         env:
