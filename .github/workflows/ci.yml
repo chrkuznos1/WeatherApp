@@ -17,12 +17,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # required by SonarCloud for full blame/history analysis      
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
       - run: dotnet restore
       - run: dotnet format WeatherApp.sln --verify-no-changes
-      - run: dotnet test WeatherApp.sln --no-restore
+      - run: dotnet build WeatherApp.sln --no-restore #-warnaserror  ...with this it turns all warnings into errors
+      - run: dotnet list WeatherApp.sln package --vulnerable      
+      - run: dotnet test WeatherApp.sln --no-restore --collect:"XPlat Code Coverage"
+# --collect adds coverage report which SonarCloud will pick up      
+
+      - name: SonarCloud scan
+        # Enterprise-grade static analysis
+        # Detects bugs, code smells, security hotspots, and tracks coverage
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # needed for PR decoration
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=chrkuznos
+            -Dsonar.projectKey=chrkuznos1_WeatherApp
+            -Dsonar.cs.opencover.reportsPaths=**/coverage.opencover.xml
+
+
+
   # ci:
   #   needs: precommit
 
