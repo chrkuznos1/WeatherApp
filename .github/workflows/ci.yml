@@ -13,22 +13,23 @@ on:
 
 jobs:
 #if i want them on the same workflow  but not recommended
-  # precommit:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-dotnet@v4
-  #       with:
-  #         dotnet-version: '8.0.x'
-  #     - run: dotnet restore
-  #     - run: dotnet format WeatherApp.sln --verify-no-changes
-  #     - run: dotnet test WeatherApp.sln --no-restore
+  precommit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore
+      - run: dotnet format WeatherApp.sln --verify-no-changes
+      - run: dotnet test WeatherApp.sln --no-restore
   # ci:
   #   needs: precommit
 
   ci:
+    needs: precommit    
     runs-on: ubuntu-latest
-
+  
     permissions:
       contents: read #allows the workflow to read the repository contents.
 #enables Cloning the repo, Reading files,Checking out code 
