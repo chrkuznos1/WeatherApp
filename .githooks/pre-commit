@@ -2,10 +2,19 @@
 set -euo pipefail
 
 # Pre-commit hook: run formatting checks and unit tests before commit
-# 1) run dotnet format verification on solution
-# 2) run unit tests
+# 1) scan for secrets with gitleaks
+# 2) run dotnet format verification on solution
+# 3) run unit tests
 
 SOLUTION_FILE="WeatherApp.sln"
+
+echo "[pre-commit] Scanning for secrets with gitleaks..."
+if command -v gitleaks &> /dev/null; then
+  gitleaks detect --source . --verbose --no-git
+else
+  echo "[pre-commit] WARNING: gitleaks not installed — skipping secret scan."
+  echo "[pre-commit] Install it: https://github.com/gitleaks/gitleaks#installing"
+fi
 
 echo "[pre-commit] Running dotnet format verification..."
 dotnet format "$SOLUTION_FILE" --verify-no-changes

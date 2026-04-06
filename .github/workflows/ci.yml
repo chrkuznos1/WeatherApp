@@ -34,7 +34,7 @@ jobs:
 # --collect adds coverage report which SonarCloud will pick up      
 
       - name: SonarCloud scan
-        # Enterprise-grade static analysis
+        # Enterprise-grade static analysis  i have to test f9871085d26c44e54cd0e38ae12325d4f9f392f1
         # Detects bugs, code smells, security hotspots, and tracks coverage
         uses: SonarSource/sonarcloud-github-action@master
         env:
