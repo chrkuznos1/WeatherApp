@@ -26,17 +26,55 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+# The precommit job runs dotnet restore on every run with no caching.
+# Add this before the restore step to speed up CI significantly:
+# - uses: actions/cache@v4
+#   with:
+#     path: ~/.nuget/packages
+#     key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+#     restore-keys: ${{ runner.os }}-nuget-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+# Every run starts on a fresh runner with nothing pre-installed.
+# dotnet restore downloads all NuGet packages from scratch on every run.
+# With this cache step:
+#   - First run: downloads packages normally, saves ~/.nuget/packages to
+#     GitHub cache storage, keyed by a hash of all .csproj files.
+#   - Subsequent runs: if no .csproj changed, packages are restored from
+#     cache in seconds instead of 30-60s for a full download.
+#   - If a .csproj changes (e.g. new package added), the hash changes,
+#     cache misses, packages are downloaded fresh and cache is updated.
+# No downside: if cache is stale or missing it falls back to normal restore.
       - run: dotnet restore
       - run: dotnet format WeatherApp.sln --verify-no-changes
       - run: dotnet build WeatherApp.sln --no-restore #-warnaserror  ...with this it turns all warnings into errors
-      - run: dotnet list WeatherApp.sln package --vulnerable      
+      #This command only prints vulnerable packages — it exits with code 0
+      # regardless. Your build won't stop even if critical CVEs are found.
+      # Add --include-transitive for full coverage and consider using a 
+      # dedicated action like dotnet-outdated or treating the output as 
+      # advisory only (which is fine, just document it):
+      # - run: dotnet list WeatherApp.sln package --vulnerable
+
+      - run: dotnet list WeatherApp.sln package --vulnerable --include-transitive
       - run: dotnet test WeatherApp.sln --no-restore --collect:"XPlat Code Coverage"
 # --collect adds coverage report which SonarCloud will pick up      
 
       - name: SonarCloud scan
         # Enterprise-grade static analysis  i have to test
         # Detects bugs, code smells, security hotspots, and tracks coverage
-        uses: SonarSource/sonarcloud-github-action@master
+        
+        # Using @master means you run whatever 
+        # the maintainer pushes at any moment — a 
+        #broken push or a compromised repo would 
+        # immediately affect your pipeline. 
+        # Pin to a specific version tag:
+        # SonarSource/sonarcloud-github-action@v3
+        uses: SonarSource/sonarcloud-github-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # needed for PR decoration
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -100,12 +138,13 @@ jobs:
 #could not determine source: errors occurred attempting to resolve 'weatherapp:ci':  
 #docker/build-push-action@v5 uses Buildx, 
 #and Buildx does not load the image into the local Docker engine unless you explicitly tell it to      
-        tags: weatherapp:ci
+        tags: ${{ env.IMAGE_NAME }}
+        # tags: weatherapp:ci  (old hardcoded tag — now using IMAGE_NAME env var)
 
     - name: Generate SBOM #Syft generates SBOM
       uses: anchore/sbom-action@v0.19.0 #anchore/syft-action@v0.14.0
       with:
-        image: weatherapp:ci
+        image: ${{ env.IMAGE_NAME }}
         output-file: sbom.json
         format: cyclonedx-json
 
@@ -122,7 +161,7 @@ jobs:
     - name: Vulnerability Scan (Grype)  #like Trivy, Grype scans SBOM
       uses: anchore/scan-action@v7
       with:
-        image: weatherapp:ci
+        image: ${{ env.IMAGE_NAME }}
         fail-build: false #true
         #severity-cutoff: critical
 ######
