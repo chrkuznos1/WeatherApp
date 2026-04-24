@@ -38,6 +38,13 @@ dotnet format "$SOLUTION_FILE" --verify-no-changes
 # dotnet restore "$SOLUTION_FILE"
 # dotnet test "$SOLUTION_FILE"
 
+# Check for known vulnerable NuGet packages (direct + transitive dependencies).
+# --include-transitive catches indirect deps too (e.g. a package your package depends on).
+# This does NOT fail the commit — it only warns. To fail on vulnerabilities,
+# configure NuGetAudit in Directory.Build.props instead.
+echo "[pre-commit] Checking for vulnerable packages..."
+dotnet list "$SOLUTION_FILE" package --vulnerable --include-transitive
+
 echo "[pre-commit] Running unit tests..."
 dotnet test "$SOLUTION_FILE" --no-restore
 

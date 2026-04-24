@@ -12,17 +12,31 @@ on:
   pull_request:
 
 jobs:
+# --- Parallel jobs: secrets + quality ---
+# Previously a single 'precommit' job ran gitleaks then all dotnet steps
+# sequentially. gitleaks only needs the repo checked out — it has zero
+# dependency on dotnet. By splitting into two jobs GitHub runs them on
+# separate runners simultaneously. Since gitleaks takes seconds and the
+# dotnet chain takes minutes they finish at roughly the same time, and the
+# ci (Docker) job starts as soon as BOTH pass. No wasted wait time.
+# The ci job uses:  needs: [secrets, quality]
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 #if i want them on the same workflow  but not recommended
-  precommit:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # required by SonarCloud for full blame/history analysis
-      - name: Check for secrets
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}          
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
@@ -84,18 +98,17 @@ jobs:
             -Dsonar.projectKey=chrkuznos1_WeatherApp
             -Dsonar.cs.opencover.reportsPaths=**/coverage.opencover.xml
 
-      - name: Publish pre-commit summary
+      - name: Publish quality summary
         if: success()
         run: |
-          echo "🔎 Secret scan completed." >> $GITHUB_STEP_SUMMARY
-          echo "✅ Pre-commit step in CI is done." >> $GITHUB_STEP_SUMMARY
+          echo "✅ Quality checks passed (format, build, tests, SonarCloud)." >> $GITHUB_STEP_SUMMARY
 
 
   # ci:
-  #   needs: precommit
+  #   needs: [secrets, quality]
 
   ci:
-    needs: precommit    
+    needs: [secrets, quality]
     runs-on: ubuntu-latest
   
     permissions:
