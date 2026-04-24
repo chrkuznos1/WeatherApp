@@ -5,13 +5,22 @@ set -euo pipefail
 # 1) scan for secrets with gitleaks
 # 2) run dotnet format verification on solution
 # 3) run unit tests
-# a warning at least one of these checks fails will prevent the commit
+# if at least one of these checks fails, the commit will be prevented
 
 SOLUTION_FILE="WeatherApp.sln"
 
 echo "[pre-commit] Scanning for secrets with gitleaks..."
 if command -v gitleaks &> /dev/null; then
   gitleaks detect --source . --config .gitleaks.toml --no-git --verbose --exit-code 1
+  # Correct — scans only staged changes, which is what pre-commit should check
+  # gitleaks protect --staged --config .gitleaks.toml --verbose
+  # gitleaks protect --staged is the command designed
+  # for pre-commit hooks. detect --no-git scans every file on
+  # disk, which is both slower and will flag secrets in files 
+  # you haven't even staged yet. The --exit-code 1 flag is also
+  # a detect-only option and not needed for protect 
+  # (it exits non-zero on findings by default).
+
 else
   echo "[pre-commit] WARNING: gitleaks not installed — skipping secret scan."
   echo "[pre-commit] Install it: https://github.com/gitleaks/gitleaks#installing"
@@ -19,6 +28,15 @@ fi
 
 echo "[pre-commit] Running dotnet format verification..."
 dotnet format "$SOLUTION_FILE" --verify-no-changes
+
+# If a developer has a clean checkout or after adding a new 
+# package, dotnet test --no-restore will fail with a misleading
+# build error instead of a clear "run dotnet restore first" 
+# message. Either drop the flag or add an explicit restore step
+# before it:
+
+# dotnet restore "$SOLUTION_FILE"
+# dotnet test "$SOLUTION_FILE"
 
 echo "[pre-commit] Running unit tests..."
 dotnet test "$SOLUTION_FILE" --no-restore
