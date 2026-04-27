@@ -299,10 +299,72 @@ git tag v1.0.0
 git push origin v1.0.0
 GitHub Actions will automatically:
 
-Build the Docker image
-
-Tag it with v1.0.0
-
+Build the Docker image, Tag it with v1.0.0
 Push it to Docker Hub
-
 No manual version editing, no secrets, no mistakes.
+
+** The following is for separate environments **
+
+# GitHub has a built-in Environments feature designed exactly for this. Here's how it works end-to-end:
+
+## Step 1 — Create environments in GitHub Settings
+
+Go to your repo → Settings → Environments → New environment. Create four: dev, sit, uat, production.
+
+For each you can configure:
+
+Protection rules — required reviewers before the job runs (e.g. UAT and production need a human to approve)
+Wait timer — mandatory delay before deployment starts
+Deployment branches — restrict which branches can deploy to that environment (e.g. only master can reach production)
+Environment secrets — API keys, connection strings scoped to that env only (overrides repo-level secrets)
+Environment variables — non-secret config values per env
+
+## Step 2 — Reference them in your workflow jobs
+
+deploy-dev:
+  needs: [secrets, quality]
+  environment: dev          # <-- links to the GitHub Environment
+  runs-on: ubuntu-latest
+  steps:
+    - run: echo "Deploying to ${{ vars.ENV_NAME }}"   # env variable
+    - run: echo "${{ secrets.DB_CONN }}"              # env-scoped secret
+
+deploy-sit:
+  needs: deploy-dev
+  environment: sit
+  ...
+
+deploy-uat:
+  needs: deploy-sit
+  environment: uat          # <-- requires manual approval if configured
+  ...
+
+deploy-production:
+  needs: deploy-uat
+  environment: production   # <-- requires approval + master branch only
+  ...
+
+## Step 3 — Typical flow for your project
+
+push to master
+      │
+      ▼
+[secrets] + [quality]  ← parallel (your current CI)
+      │
+      ▼
+   [ci]  ← Docker build + SBOM + Grype scan
+      │
+      ▼
+[deploy-dev]  ← auto, no approval
+      │
+      ▼
+[deploy-sit]  ← auto
+      │
+      ▼
+[deploy-uat]  ← manual approval required
+      │
+      ▼
+[deploy-production]  ← manual approval + master branch rule
+
+## Key point for your structure: your current ci.yml is the CI part (build/test/scan only). The environments live in a separate cd.yml that triggers after CI passes — or as additional jobs appended to the same file. 
+Keeping them separate is the cleaner approach.
