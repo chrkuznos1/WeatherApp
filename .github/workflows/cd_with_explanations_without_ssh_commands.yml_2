@@ -1,0 +1,210 @@
+# Triggered when CI passes on master, or on a v* tag push (e.g. v1.0.0).
+#
+# WHY separate CD from CI:
+#   CI (ci.yml) only validates code quality — it never deploys.
+#   CD (this file) takes the validated image and promotes it through environments.
+#   Keeping them separate means a failed deploy never blocks a passing build.
+#
+# STRATEGY — build once, promote the same image:
+#   1. build-and-push : builds the Docker image, pushes to Docker Hub, signs with Cosign.
+#   2. deploy-dev     : auto-deploys after build (no approval).
+#   3. deploy-sit     : auto-deploys after dev passes (no approval).
+#   4. deploy-uat     : waits for MANUAL APPROVAL before deploying.
+#   5. deploy-production: waits for MANUAL APPROVAL before deploying.
+#
+# The same image tag flows through all environments — no rebuilds per env.
+# This guarantees that what passed dev/sit/uat is exactly what hits production.
+#
+# HOW TO SET UP APPROVALS:
+#   GitHub → repo Settings → Environments → select uat or production
+#   → Required reviewers → add yourself or your team.
+#   → Deployment branches → restrict to master for production.
+
+name: CD - Deploy Environments
+
+on:
+  workflow_run:
+    workflows: ["CI - Build, Test, SBOM, Scan"]
+    types:
+      - completed
+    branches:
+      - master
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write  # required for Cosign OIDC keyless signing via GitHub OIDC token
+  contents: read
+
+env:
+  IMAGE_BASE: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp2
+
+jobs:
+  # -----------------------------------------------------------------------
+  # WHAT: Builds the Docker image, pushes it to Docker Hub, signs it.
+  # WHY build once: all deploy jobs reuse this exact image via job outputs
+  #   (image-tag, image-digest). No env gets a differently-built image.
+  # WHY Cosign: proves the image was built by this pipeline and not tampered
+  #   with. Uses OIDC keyless signing — no private key stored anywhere.
+  #   The signature is recorded on Rekor (public transparency log).
+  #
+  # Tags produced:
+  #   sha-<short-sha>  → when triggered by CI completing on master
+  #   v1.0.0           → when triggered by a v* tag push
+  # -----------------------------------------------------------------------
+  build-and-push:
+    # Only run if CI passed (workflow_run trigger) or a tag was pushed.
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # WHY head_sha: with workflow_run trigger, github.sha is the sha of
+          # the cd.yml file itself, not the commit that triggered CI.
+          # head_sha gives us the correct commit. Falls back to github.sha
+          # for tag push triggers where workflow_run is not involved.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      #2. Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # WHY metadata-action: auto-generates consistent tags and OCI labels.
+      # type=sha   → sha-abc1234  (traceability: tag maps back to exact commit)
+      # type=ref   → v1.0.0       (human-readable release tag for tag pushes)
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BASE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=tag
+
+      - name: Build and push to Docker Hub
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      # WHY sign by digest not tag: tags are mutable (can be overwritten).
+      # Signing by digest (@sha256:...) pins the signature to the exact image
+      # content. Verify with:
+      #   cosign verify --certificate-identity-regexp="github.com/<org>/<repo>" \
+      #     $IMAGE_BASE@$DIGEST
+      - name: Sign Docker Hub image (OIDC)
+        run: |
+          cosign sign --yes ${{ env.IMAGE_BASE }}@${{ steps.build.outputs.digest }}
+
+      # Commented: push and sign to ACR in addition to Docker Hub
+      # - name: Log in to ACR
+      #   uses: azure/docker-login@v2
+      #   with:
+      #     login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+      #     use-azure-cli: false
+
+      # - name: Push image to ACR
+      #   run: |
+      #     docker tag ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.version }} \
+      #       ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ steps.meta.outputs.version }}
+      #     docker push ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ steps.meta.outputs.version }}
+
+      # - name: Sign ACR image
+      #   run: |
+      #     cosign sign --yes \
+      #       ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp@${{ steps.build.outputs.digest }}
+
+
+  # -----------------------------------------------------------------------
+  # WHAT: Sequential environment promotion chain.
+  # WHY sequential: each env must pass before the next one receives the image.
+  #   A bug caught in sit never reaches uat; a rejected uat never reaches prod.
+  #
+  # WHY build-and-push in every needs array:
+  #   GitHub Actions only passes job outputs to direct dependents.
+  #   Each deploy job lists build-and-push in needs so it can read image-tag.
+  #
+  # REPLACE the echo commands with your actual deploy command, e.g.:
+  #   docker-compose pull && docker-compose up -d
+  #   kubectl set image deployment/weatherapp weatherapp=$IMAGE --namespace=<env>
+  #   az webapp config container set --name weatherapp-<env> --docker-custom-image-name $IMAGE
+  # -----------------------------------------------------------------------
+
+  deploy-dev:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: dev    # no approval — auto-deploys on every master commit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Deploy to dev
+        env:
+          IMAGE: ${{ env.IMAGE_BASE }}:${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          echo "Deploying $IMAGE to dev"
+
+  deploy-sit:
+    needs: [build-and-push, deploy-dev]
+    runs-on: ubuntu-latest
+    environment: sit    # no approval — auto-deploys after dev passes
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Deploy to sit
+        env:
+          IMAGE: ${{ env.IMAGE_BASE }}:${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          echo "Deploying $IMAGE to sit"
+
+  deploy-uat:
+    needs: [build-and-push, deploy-sit]
+    runs-on: ubuntu-latest
+    environment: uat    # MANUAL APPROVAL GATE — configure in GitHub Settings → Environments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Deploy to uat
+        env:
+          IMAGE: ${{ env.IMAGE_BASE }}:${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          echo "Deploying $IMAGE to uat"
+
+  deploy-production:
+    needs: [build-and-push, deploy-uat]
+    runs-on: ubuntu-latest
+    environment: production    # MANUAL APPROVAL GATE — configure in GitHub Settings → Environments
+    # WHY restrict to master: production should only receive code from the
+    # stable branch. Set Deployment branches → master only in GitHub Settings.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Deploy to production
+        env:
+          IMAGE: ${{ env.IMAGE_BASE }}:${{ needs.build-and-push.outputs.image-tag }}
+        run: |
+          echo "Deploying $IMAGE to production"
