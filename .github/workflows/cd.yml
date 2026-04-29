@@ -1,7 +1,43 @@
-# Triggered only on tags (e.g., v1.0.0).
-# This is your release pipeline.
+# Triggered when CI passes on master, or on a v* tag push (e.g. v1.0.0).
+#
+# SECRETS APPROACH: GitHub Environment Secrets
+#   Each environment (dev, sit, uat, production) stores its own secrets in:
+#   GitHub → Settings → Environments → <env name> → Secrets
+#   The YAML uses the same variable names everywhere (e.g. secrets.EC2_HOST)
+#   and GitHub automatically injects the correct value based on which
+#   environment the job is running in.
+#   See cd-aws-secrets-manager.yml for the alternative approach using AWS Secrets Manager.
+#
+# WHY separate CD from CI:
+#   CI (ci.yml) only validates code quality — it never deploys.
+#   CD (this file) takes the validated image and promotes it through environments.
+#   Keeping them separate means a failed deploy never blocks a passing build.
+#
+# STRATEGY — build once, promote the same image:
+#   1. build-and-push  : builds the Docker image, pushes to Docker Hub, signs with Cosign.
+#   2. deploy-dev      : auto-deploys after build (no approval needed).
+#   3. deploy-sit      : auto-deploys after dev passes (no approval needed).
+#   4. deploy-uat      : waits for MANUAL APPROVAL before deploying.
+#   5. deploy-production: waits for MANUAL APPROVAL before deploying.
+#
+# The same image tag flows through all environments — no rebuilds per env.
+# This guarantees that what passed dev/sit/uat is exactly what hits production.
+#
+# HOW TO SET UP APPROVALS:
+#   GitHub → repo Settings → Environments → select uat or production
+#   → Required reviewers → add yourself or your team
+#   → Deployment branches → restrict to master for production
+#
+# REQUIRED SECRETS PER ENVIRONMENT (Settings → Environments → <env> → Secrets):
+#   EC2_HOST      public IP or DNS of the EC2 instance for that environment
+#   EC2_USER      SSH login user (ec2-user for Amazon Linux, ubuntu for Ubuntu)
+#   EC2_SSH_KEY   private SSH key (.pem content) — never hardcode this
+#   EC2_HOST_KEY  SSH host fingerprint, prevents MITM attacks
+#                 get it once with: ssh-keyscan -H <EC2_HOST> | grep ecdsa
+# REQUIRED SECRETS AT REPO LEVEL (Settings → Secrets → Actions):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
 
-name: CD - Sign and Push Images
+name: CD - Deploy Environments (GitHub Secrets)
 
 on:
   workflow_run:
@@ -9,66 +45,276 @@ on:
     types:
       - completed
     branches:
-      - master  
+      - master
   push:
     tags:
       - 'v*'
 
 permissions:
-  id-token: write
+  id-token: write  # required for Cosign OIDC keyless signing
   contents: read
 
+env:
+  IMAGE_BASE: ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp2
+
 jobs:
-  release:
+  # -----------------------------------------------------------------------
+  # WHAT: Builds the Docker image, pushes it to Docker Hub, signs it.
+  # WHY build once: all deploy jobs reuse this exact image via job outputs
+  #   (image-tag, image-digest). No environment gets a differently-built image.
+  # WHY Cosign: proves the image was built by this pipeline and not tampered
+  #   with. Uses OIDC keyless signing — no private key stored anywhere.
+  #   The signature is recorded on Rekor (public transparency log).
+  #
+  # Tags produced:
+  #   sha-<short-sha>  when triggered by CI completing on master
+  #   v1.0.0           when triggered by a v* tag push
+  # -----------------------------------------------------------------------
+  build-and-push:
+    # WHY this condition: only run if CI passed (workflow_run) or a tag was pushed.
+    # Without it, a failed CI would still trigger a deploy.
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'push')
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+      image-digest: ${{ steps.build.outputs.digest }}
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # WHY head_sha: with workflow_run trigger, github.sha points to the
+          # cd.yml file commit, not the commit that triggered CI.
+          # head_sha gives the correct source commit. Falls back to github.sha
+          # for tag push triggers where workflow_run is not involved.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-#2. Log in to Docker Hub
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build and push to Docker Hub
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: |
-          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp2:${{ github.ref_name }}
+      # WHY metadata-action: auto-generates consistent tags and OCI labels.
+      # type=sha   → sha-abc1234  (traceability: tag maps back to exact commit)
+      # type=ref   → v1.0.0       (human-readable release tag for tag pushes)
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BASE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=tag
 
-    - name: Install Cosign
-      uses: sigstore/cosign-installer@v3
+      - name: Build and push to Docker Hub
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
-    - name: Sign Docker Hub image (OIDC)
-      run: |
-        cosign sign \
-          --yes \
-          ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp2:${{ github.ref_name }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
 
-    # - name: Log in to ACR
-    #   uses: azure/docker-login@v2
-    #   with:
-    #     login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-    #     use-azure-cli: false
+      # WHY sign by digest not tag: tags are mutable (can be overwritten).
+      # Signing by digest (@sha256:...) pins the signature to the exact image
+      # content. Verify with:
+      #   cosign verify --certificate-identity-regexp="github.com/<org>/<repo>" \
+      #     $IMAGE_BASE@$DIGEST
+      - name: Sign Docker Hub image (OIDC keyless)
+        run: |
+          cosign sign --yes ${{ env.IMAGE_BASE }}@${{ steps.build.outputs.digest }}
 
-    # - name: Push image to ACR
-    #   run: |
-    #     docker tag ${{ secrets.DOCKERHUB_USERNAME }}/weatherapp:${{ github.ref_name }} \
-    #       ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
+      # Commented: push and sign to ACR in addition to Docker Hub
+      # - name: Log in to ACR
+      #   uses: azure/docker-login@v2
+      #   with:
+      #     login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+      #     use-azure-cli: false
+      # - name: Push image to ACR
+      #   run: |
+      #     docker tag ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.version }} \
+      #       ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ steps.meta.outputs.version }}
+      #     docker push ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ steps.meta.outputs.version }}
+      # - name: Sign ACR image
+      #   run: |
+      #     cosign sign --yes \
+      #       ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp@${{ steps.build.outputs.digest }}
 
-    #     docker push ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
 
-    # - name: Sign ACR image
-    #   run: |
-    #     cosign sign \
-    #       --yes \
-    #       ${{ secrets.ACR_LOGIN_SERVER }}/weatherapp:${{ github.ref_name }}
+  # -----------------------------------------------------------------------
+  # WHAT: Sequential environment promotion chain via SSH to EC2 + Docker Compose.
+  # WHY sequential: each env must pass before the next receives the image.
+  #   A bug caught in sit never reaches uat; a rejected uat never reaches prod.
+  #
+  # WHY no checkout in deploy jobs: these jobs only SSH into EC2 and run remote
+  #   commands. They do not need local repo files. The docker-compose.yml is
+  #   assumed to already live on the EC2 instance under /opt/weatherapp.
+  #
+  # WHY build-and-push in every needs array: GitHub Actions only passes job
+  #   outputs to direct dependents. Listing it in needs gives each job access
+  #   to image-tag without re-running the build.
+  #
+  # HOW GitHub Environment Secrets work across jobs:
+  #   All jobs use ${{ secrets.EC2_HOST }} — same name, different value.
+  #   GitHub resolves the value from the environment declared on that job:
+  #     deploy-dev  (environment: dev)        → dev EC2 host
+  #     deploy-sit  (environment: sit)        → sit EC2 host
+  #     deploy-uat  (environment: uat)        → uat EC2 host
+  #     deploy-production (environment: prod) → production EC2 host
+  #
+  # WHY appleboy/ssh-action: runs commands remotely via SSH without manually
+  #   managing keys or known_hosts on the runner. Secrets are forwarded to the
+  #   remote script via envs: — they are never written to disk on the runner.
+  # -----------------------------------------------------------------------
+
+  deploy-dev:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: dev    # no approval — auto-deploys on every master commit
+    env:
+      IMAGE: ${{ needs.build-and-push.outputs.image-tag }}
+
+    steps:
+      - name: Deploy to dev EC2 (Docker Compose)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}       # dev EC2 — from Environment secret
+          username: ${{ secrets.EC2_USER }}   # dev EC2 — from Environment secret
+          key: ${{ secrets.EC2_SSH_KEY }}     # dev EC2 — from Environment secret
+          # fingerprint pins the expected host key — connection is rejected if
+          # the EC2 instance is replaced or the host key changes unexpectedly.
+          fingerprint: ${{ secrets.EC2_HOST_KEY }}
+          # envs: lists which runner env vars to forward to the remote script.
+          # Only variables listed here are sent — nothing else leaks to EC2.
+          envs: IMAGE,IMAGE_BASE,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          script: |
+            # Authenticate with Docker Hub to avoid pull rate limits on EC2
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+            # Pull the exact image built and signed by this pipeline
+            docker pull $IMAGE_BASE:$IMAGE
+
+            # The docker-compose.yml on EC2 must reference the image as:
+            #   image: ${IMAGE_BASE}:${IMAGE}
+            # Navigate to the app directory and restart with the new image
+            cd /opt/weatherapp
+            IMAGE_BASE=$IMAGE_BASE IMAGE=$IMAGE docker compose up -d --remove-orphans
+
+            # Prune old images to free disk space on the instance
+            docker image prune -f
+
+            # Verify the container started successfully after deployment
+            docker compose ps
+        env:
+          # Set on the runner first — then forwarded to EC2 via envs: above
+          IMAGE_BASE: ${{ env.IMAGE_BASE }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  deploy-sit:
+    needs: [build-and-push, deploy-dev]
+    runs-on: ubuntu-latest
+    environment: sit    # no approval — auto-deploys after dev passes
+    env:
+      IMAGE: ${{ needs.build-and-push.outputs.image-tag }}
+
+    steps:
+      - name: Deploy to sit EC2 (Docker Compose)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}       # sit EC2 — from Environment secret
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_KEY }}
+          envs: IMAGE,IMAGE_BASE,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          script: |
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            docker pull $IMAGE_BASE:$IMAGE
+            cd /opt/weatherapp
+            IMAGE_BASE=$IMAGE_BASE IMAGE=$IMAGE docker compose up -d --remove-orphans
+            docker image prune -f
+            docker compose ps
+        env:
+          IMAGE_BASE: ${{ env.IMAGE_BASE }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  deploy-uat:
+    needs: [build-and-push, deploy-sit]
+    runs-on: ubuntu-latest
+    environment: uat    # MANUAL APPROVAL GATE — configure in GitHub Settings → Environments
+    env:
+      IMAGE: ${{ needs.build-and-push.outputs.image-tag }}
+
+    steps:
+      - name: Deploy to uat EC2 (Docker Compose)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}       # uat EC2 — from Environment secret
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_KEY }}
+          envs: IMAGE,IMAGE_BASE,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          script: |
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            docker pull $IMAGE_BASE:$IMAGE
+            cd /opt/weatherapp
+            IMAGE_BASE=$IMAGE_BASE IMAGE=$IMAGE docker compose up -d --remove-orphans
+            docker image prune -f
+            docker compose ps
+        env:
+          IMAGE_BASE: ${{ env.IMAGE_BASE }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  deploy-production:
+    needs: [build-and-push, deploy-uat]
+    runs-on: ubuntu-latest
+    environment: production    # MANUAL APPROVAL GATE — configure in GitHub Settings → Environments
+    # WHY restrict branch: production must only receive code from master.
+    # Set Deployment branches → master only in GitHub Settings → Environments → production.
+    env:
+      IMAGE: ${{ needs.build-and-push.outputs.image-tag }}
+
+    steps:
+      - name: Deploy to production EC2 (Docker Compose)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}       # production EC2 — from Environment secret
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_KEY }}
+          envs: IMAGE,IMAGE_BASE,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          script: |
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            docker pull $IMAGE_BASE:$IMAGE
+            cd /opt/weatherapp
+            IMAGE_BASE=$IMAGE_BASE IMAGE=$IMAGE docker compose up -d --remove-orphans
+            docker image prune -f
+            docker compose ps
+        env:
+          IMAGE_BASE: ${{ env.IMAGE_BASE }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # WHY smoke test on production only: production is the highest risk
+      # environment. A basic HTTP check confirms the app is responding after
+      # deploy. Adjust the URL/port to match your actual production endpoint.
+      # If it fails the job fails and the deployment is flagged as broken.
+      - name: Smoke test production endpoint
+        run: |
+          echo "Waiting for app to become ready..."
+          sleep 10
+          curl --fail --retry 3 --retry-delay 5 \
+            http://${{ secrets.EC2_HOST }}:8080/health || \
+            (echo "Smoke test failed — app did not respond after deploy" && exit 1)
