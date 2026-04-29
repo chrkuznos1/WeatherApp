@@ -21,10 +21,19 @@ jobs:
 # ci (Docker) job starts as soon as BOTH pass. No wasted wait time.
 # The ci job uses:  needs: [secrets, quality]
 
+
+#The secrets job does a shallow clone (default fetch-depth: 1) ***
+# — only the latest commit is downloaded. When gitleaks-action tries to
+# scan the range between the previous push commit and the current one, the
+# older commit doesn't exist locally and git fails.
+# The fix: add fetch-depth: 0 to the checkout in the secrets job, 
+# same as the quality job already has.
   secrets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # *** required by gitleaks-action to scan commit range between pushes
       - name: Check for secrets
         uses: gitleaks/gitleaks-action@v2
         env:
